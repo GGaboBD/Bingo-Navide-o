@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bingo Navideño — 75 Bolas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Decoración sutil de copos de nieve -->
+  <div class="snow-decor" aria-hidden="true">
+    <span class="flake f1">❄</span>
+    <span class="flake f2">❅</span>
+    <span class="flake f3">❆</span>
+    <span class="flake f4">❄</span>
+    <span class="flake f5">❅</span>
+  </div>
+
+  <div class="app-shell">
+    <!-- Mitad izquierda: selector de letras + buscador + tablero -->
+    <section class="left-panel" aria-label="Tablero de control del Bingo">
+      <header class="panel-header">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">🎄</span>
+          <div>
+            <h1>Bingo Navideño</h1>
+            <p class="subtitle">Bingo Americano (75 bolas)</p>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <span class="counter-pill" id="counterPill" title="Números cantados en total">
+            <span id="calledCount">0</span> / 75
+          </span>
+          <button type="button" class="btn-secondary" id="undoBtn" disabled title="Deshacer último número">
+            Deshacer
+          </button>
+          <button type="button" class="btn-danger-outline" id="resetBtn" title="Reiniciar tablero">
+            Reiniciar
+          </button>
+        </div>
+      </header>
+
+      <!-- Selector de modalidad / letra (B, I, N, G, O, BINGO) -->
+      <nav class="letter-tabs" id="letterTabs" aria-label="Seleccionar letra o tablero completo">
+        <button type="button" class="letter-tab is-selected" data-mode="B">
+          <span class="tab-letter">B</span>
+          <span class="tab-range">1–15</span>
+        </button>
+        <button type="button" class="letter-tab" data-mode="I">
+          <span class="tab-letter">I</span>
+          <span class="tab-range">16–30</span>
+        </button>
+        <button type="button" class="letter-tab" data-mode="N">
+          <span class="tab-letter">N</span>
+          <span class="tab-range">31–45</span>
+        </button>
+        <button type="button" class="letter-tab" data-mode="G">
+          <span class="tab-letter">G</span>
+          <span class="tab-range">46–60</span>
+        </button>
+        <button type="button" class="letter-tab" data-mode="O">
+          <span class="tab-letter">O</span>
+          <span class="tab-range">61–75</span>
+        </button>
+        <button type="button" class="letter-tab tab-bingo" data-mode="BINGO">
+          <span class="tab-letter">BINGO</span>
+          <span class="tab-range">1–75</span>
+        </button>
+      </nav>
+
+      <form class="search-bar" id="numberForm" autocomplete="off">
+        <label for="numberInput" class="sr-only">Escribe un número del 1 al 75</label>
+        <div class="input-wrap">
+          <span class="input-icon" aria-hidden="true">🔎</span>
+          <input
+            type="number"
+            id="numberInput"
+            min="1"
+            max="75"
+            inputmode="numeric"
+            placeholder="Escribe un número (1 - 15) y pulsa Enter..."
+          />
+        </div>
+        <button type="submit" class="btn-primary">Mostrar</button>
+        <button type="button" class="btn-tombola" id="tombolaBtn" title="Sacar número aleatorio de la letra actual">
+          🎲 Tómbola
+        </button>
+      </form>
+      <p class="input-feedback" id="inputFeedback" role="status" aria-live="polite"></p>
+
+      <div class="grid-card">
+        <div class="grid-header-bar">
+          <span class="mode-badge" id="modeBadge">Ronda B · Números 1 al 15</span>
+          <span class="mode-count" id="modeCount">0 / 15</span>
+        </div>
+
+        <div class="numbers-container" id="numbersContainer" role="group" aria-label="Números del tablero">
+          <!-- Los botones se generan dinámicamente según la letra o BINGO -->
+        </div>
+
+        <div class="grid-legend">
+          <span class="legend-item"><i class="dot dot-default"></i> Disponible</span>
+          <span class="legend-item"><i class="dot dot-active"></i> En pantalla</span>
+          <span class="legend-item"><i class="dot dot-called"></i> Ya salió (bloqueado)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mitad derecha: número gigante -->
+    <main class="right-panel" aria-label="Número actual en grande">
+      <div class="stage-card" id="stageCard">
+        <div class="holly-ribbon" aria-hidden="true">
+          <span class="ribbon-line"></span>
+          <span class="ribbon-star">✦</span>
+          <span class="ribbon-line"></span>
+        </div>
+
+        <span class="stage-label" id="stageLabel">NÚMERO ACTUAL</span>
+
+        <div class="giant-display" id="giantDisplay" aria-live="polite">
+          <div class="empty-state" id="emptyState">
+            <span class="empty-ornament" aria-hidden="true">🎁</span>
+            <p class="empty-title">¡Listos para jugar!</p>
+            <p class="empty-desc">Elige una letra arriba y haz clic en un número o escríbelo para mostrarlo aquí en grande.</p>
+          </div>
+          <div class="giant-combo hidden" id="giantCombo">
+            <span class="giant-letter" id="giantLetter"></span>
+            <span class="giant-sep" aria-hidden="true">-</span>
+            <span class="giant-number" id="giantNumber"></span>
+          </div>
+        </div>
+
+        <div class="recent-wrap" id="recentWrap">
+          <span class="recent-title">Anteriores:</span>
+          <div class="recent-list" id="recentList">
+            <span class="recent-empty">Ninguno todavía</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
