@@ -1,19 +1,52 @@
 (() => {
-  const STORAGE_KEY = "bingo_navideno_75_v1";
+  const STORAGE_KEY = "bingo_navideno_v2";
   const TOTAL_NUMBERS = 75;
 
-  const MODES = {
-    B: { label: "Ronda B · Números 1 al 15", min: 1, max: 15 },
-    I: { label: "Ronda I · Números 16 al 30", min: 16, max: 30 },
-    N: { label: "Ronda N · Números 31 al 45", min: 31, max: 45 },
-    G: { label: "Ronda G · Números 46 al 60", min: 46, max: 60 },
-    O: { label: "Ronda O · Números 61 al 75", min: 61, max: 75 },
-    BINGO: { label: "Ronda BINGO · Todos los números (1 al 75)", min: 1, max: 75 },
+  const RANGES = {
+    B: { min: 1, max: 15 },
+    I: { min: 16, max: 30 },
+    N: { min: 31, max: 45 },
+    G: { min: 46, max: 60 },
+    O: { min: 61, max: 75 },
   };
 
   const LETTER_ORDER = ["B", "I", "N", "G", "O"];
 
-  const letterTabs = document.getElementById("letterTabs");
+  const PATTERNS = {
+    X: {
+      id: "X",
+      name: "Letra X",
+      hint: "Ambas diagonales completas",
+      match: (r, c) => r === c || r + c === 4,
+    },
+    L: {
+      id: "L",
+      name: "Letra L",
+      hint: "Columna B y fila inferior completas",
+      match: (r, c) => c === 0 || r === 4,
+    },
+    H: {
+      id: "H",
+      name: "Letra H",
+      hint: "Columnas B y O unidas por la fila central",
+      match: (r, c) => c === 0 || c === 4 || r === 2,
+    },
+    Z: {
+      id: "Z",
+      name: "Letra Z",
+      hint: "Fila superior, diagonal inversa y fila inferior",
+      match: (r, c) => r === 0 || r === 4 || r + c === 4,
+    },
+    FRAME: {
+      id: "FRAME",
+      name: "Marco grande",
+      hint: "Todo el borde exterior del cartón",
+      match: (r, c) => r === 0 || r === 4 || c === 0 || c === 4,
+    },
+  };
+
+  const PATTERN_KEYS = Object.keys(PATTERNS);
+
   const numbersContainer = document.getElementById("numbersContainer");
   const numberForm = document.getElementById("numberForm");
   const numberInput = document.getElementById("numberInput");
@@ -23,22 +56,32 @@
   const giantNumberEl = document.getElementById("giantNumber");
   const emptyStateEl = document.getElementById("emptyState");
   const calledCountEl = document.getElementById("calledCount");
-  const modeBadgeEl = document.getElementById("modeBadge");
-  const modeCountEl = document.getElementById("modeCount");
+  const remainingCountEl = document.getElementById("remainingCount");
   const recentListEl = document.getElementById("recentList");
   const undoBtn = document.getElementById("undoBtn");
   const resetBtn = document.getElementById("resetBtn");
   const tombolaBtn = document.getElementById("tombolaBtn");
+  const drawPatternBtn = document.getElementById("drawPatternBtn");
+
+  const patternCard = document.getElementById("patternCard");
+  const patternNameEl = document.getElementById("patternName");
+  const patternHintEl = document.getElementById("patternHint");
+  const patternSelector = document.getElementById("patternSelector");
+  const patternGrid = document.getElementById("patternGrid");
 
   /** @type {Map<number, HTMLButtonElement>} */
-  let buttonMap = new Map();
+  const buttonMap = new Map();
+  /** @type {{ el: HTMLDivElement, r: number, c: number }[]} */
+  const patternCells = [];
+
   let rollTimer = null;
+  let patternDrawTimer = null;
 
   let state = {
-    mode: "B",
     activeNumber: null,
     calledNumbers: [],
     history: [],
+    activePattern: "X",
   };
 
   function getLetterForNumber(num) {
@@ -61,7 +104,6 @@
       const parsed = JSON.parse(raw);
       if (
         parsed &&
-        MODES[parsed.mode] &&
         (parsed.activeNumber === null ||
           (Number.isInteger(parsed.activeNumber) &&
             parsed.activeNumber >= 1 &&
@@ -69,7 +111,12 @@
         Array.isArray(parsed.calledNumbers) &&
         Array.isArray(parsed.history)
       ) {
-        state = parsed;
+        state.activeNumber = parsed.activeNumber;
+        state.calledNumbers = parsed.calledNumbers;
+        state.history = parsed.history;
+        if (parsed.activePattern && PATTERNS[parsed.activePattern]) {
+          state.activePattern = parsed.activePattern;
+        }
       }
     } catch {
       // Iniciar limpio si hay error de lectura
@@ -96,42 +143,71 @@
     return btn;
   }
 
-  function buildBoardForMode() {
-    buttonMap = new Map();
+  function buildUnifiedBoard() {
+    buttonMap.clear();
     numbersContainer.innerHTML = "";
 
-    if (state.mode === "BINGO") {
-      const rowsWrap = document.createElement("div");
-      rowsWrap.className = "bingo-rows";
+    const rowsWrap = document.createElement("div");
+    rowsWrap.className = "bingo-rows";
 
-      for (const letter of LETTER_ORDER) {
-        const { min, max } = MODES[letter];
-        const row = document.createElement("div");
-        row.className = "bingo-row";
+    for (const letter of LETTER_ORDER) {
+      const { min, max } = RANGES[letter];
+      const row = document.createElement("div");
+      row.className = "bingo-row";
 
-        const label = document.createElement("span");
-        label.className = "bingo-row-label";
-        label.textContent = letter;
-        row.appendChild(label);
-
-        for (let i = min; i <= max; i++) {
-          row.appendChild(createNumberButton(i));
-        }
-        rowsWrap.appendChild(row);
-      }
-
-      numbersContainer.appendChild(rowsWrap);
-    } else {
-      const { min, max } = MODES[state.mode];
-      const grid = document.createElement("div");
-      grid.className = "numbers-grid-single";
+      const label = document.createElement("span");
+      label.className = "bingo-row-label";
+      label.textContent = letter;
+      row.appendChild(label);
 
       for (let i = min; i <= max; i++) {
-        grid.appendChild(createNumberButton(i));
+        row.appendChild(createNumberButton(i));
       }
-
-      numbersContainer.appendChild(grid);
+      rowsWrap.appendChild(row);
     }
+
+    numbersContainer.appendChild(rowsWrap);
+  }
+
+  function buildPatternGrid() {
+    patternGrid.innerHTML = "";
+    patternCells.length = 0;
+
+    for (const letter of LETTER_ORDER) {
+      const headerCell = document.createElement("div");
+      headerCell.className = "card-col-header";
+      headerCell.textContent = letter;
+      patternGrid.appendChild(headerCell);
+    }
+
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 5; c++) {
+        const cell = document.createElement("div");
+        cell.className = "pattern-cell";
+        if (r === 2 && c === 2) {
+          cell.classList.add("is-free");
+          cell.textContent = "★";
+          cell.setAttribute("title", "Espacio libre (comodín)");
+        }
+        patternGrid.appendChild(cell);
+        patternCells.push({ el: cell, r, c });
+      }
+    }
+  }
+
+  function renderPatternPreview(patternId) {
+    const pattern = PATTERNS[patternId] || PATTERNS.X;
+    patternNameEl.textContent = pattern.name;
+    patternHintEl.textContent = pattern.hint;
+
+    for (const cell of patternCells) {
+      cell.el.classList.toggle("is-lit", pattern.match(cell.r, cell.c));
+    }
+
+    const pills = patternSelector.querySelectorAll(".pattern-pill");
+    pills.forEach((pill) => {
+      pill.classList.toggle("is-selected", pill.dataset.pattern === pattern.id);
+    });
   }
 
   function cancelRoll() {
@@ -141,10 +217,18 @@
     }
   }
 
-  function getAvailableNumbersForCurrentMode() {
-    const { min, max } = MODES[state.mode];
+  function cancelPatternDraw() {
+    if (patternDrawTimer !== null) {
+      clearInterval(patternDrawTimer);
+      patternDrawTimer = null;
+    }
+    patternCard.classList.remove("is-drawing");
+    drawPatternBtn.disabled = false;
+  }
+
+  function getAvailableNumbers() {
     const available = [];
-    for (let i = min; i <= max; i++) {
+    for (let i = 1; i <= TOTAL_NUMBERS; i++) {
       if (!isMarked(i)) {
         available.push(i);
       }
@@ -155,12 +239,9 @@
   function spinTombola() {
     if (rollTimer !== null) return;
 
-    const available = getAvailableNumbersForCurrentMode();
+    const available = getAvailableNumbers();
     if (available.length === 0) {
-      inputFeedback.textContent =
-        state.mode === "BINGO"
-          ? "Ya salieron todos los 75 números."
-          : `Ya salieron todos los números de la letra ${state.mode}.`;
+      inputFeedback.textContent = "Ya salieron todos los 75 números.";
       return;
     }
 
@@ -193,22 +274,40 @@
     }, 65);
   }
 
-  function setMode(mode) {
-    if (!MODES[mode] || state.mode === mode) return;
-    cancelRoll();
-    state.mode = mode;
-    clearFeedback();
-    clearMatchHighlight();
-    numberInput.value = "";
+  function drawRandomPattern() {
+    if (patternDrawTimer !== null) return;
+
+    const chosenKey = PATTERN_KEYS[Math.floor(Math.random() * PATTERN_KEYS.length)];
+    drawPatternBtn.disabled = true;
+    patternCard.classList.add("is-drawing");
+
+    let step = 0;
+    const totalSteps = 10;
+    let lastPreviewIdx = PATTERN_KEYS.indexOf(state.activePattern);
+
+    patternDrawTimer = setInterval(() => {
+      step++;
+      if (step < totalSteps) {
+        lastPreviewIdx = (lastPreviewIdx + 1) % PATTERN_KEYS.length;
+        renderPatternPreview(PATTERN_KEYS[lastPreviewIdx]);
+      } else {
+        cancelPatternDraw();
+        selectPattern(chosenKey);
+      }
+    }, 75);
+  }
+
+  function selectPattern(patternId) {
+    if (!PATTERNS[patternId]) return;
+    cancelPatternDraw();
+    state.activePattern = patternId;
     saveState();
-    buildBoardForMode();
-    render(false);
+    renderPatternPreview(patternId);
   }
 
   function selectNumber(num) {
     if (num < 1 || num > TOTAL_NUMBERS) return;
 
-    // Bloquear si ya fue marcado anteriormente o está actualmente en pantalla
     if (isMarked(num)) {
       const letter = getLetterForNumber(num);
       inputFeedback.textContent = `El número ${letter}-${num} ya fue marcado y no se puede volver a seleccionar.`;
@@ -218,7 +317,6 @@
     clearFeedback();
     clearMatchHighlight();
 
-    // El número anterior pasa a estar en gris
     if (state.activeNumber !== null && !state.calledNumbers.includes(state.activeNumber)) {
       state.calledNumbers.push(state.activeNumber);
     }
@@ -256,7 +354,7 @@
   function resetBoard() {
     cancelRoll();
     if (state.activeNumber === null && state.calledNumbers.length === 0) return;
-    const confirmed = window.confirm("¿Seguro que deseas reiniciar todo el tablero de Bingo?");
+    const confirmed = window.confirm("¿Seguro que deseas reiniciar los números cantados del tablero?");
     if (!confirmed) return;
 
     state.activeNumber = null;
@@ -272,22 +370,6 @@
 
   function render(animateGiant = false) {
     const calledSet = new Set(state.calledNumbers);
-    const modeInfo = MODES[state.mode];
-
-    // Actualizar pestañas de letras
-    const tabBtns = letterTabs.querySelectorAll(".letter-tab");
-    tabBtns.forEach((tab) => {
-      tab.classList.toggle("is-selected", tab.dataset.mode === state.mode);
-    });
-
-    // Actualizar input según la modalidad activa
-    numberInput.min = String(modeInfo.min);
-    numberInput.max = String(modeInfo.max);
-    numberInput.placeholder = `Escribe un número (${modeInfo.min} - ${modeInfo.max}) y pulsa Enter...`;
-
-    // Actualizar botones visibles y contar marcados en la vista actual
-    let modeMarkedCount = 0;
-    const modeTotal = modeInfo.max - modeInfo.min + 1;
 
     for (const [num, btn] of buttonMap.entries()) {
       btn.classList.remove("is-active", "is-called");
@@ -295,26 +377,21 @@
         btn.classList.add("is-active");
         btn.disabled = true;
         btn.setAttribute("aria-pressed", "true");
-        modeMarkedCount++;
       } else if (calledSet.has(num)) {
         btn.classList.add("is-called");
         btn.disabled = true;
         btn.setAttribute("aria-pressed", "true");
-        modeMarkedCount++;
       } else {
         btn.disabled = false;
         btn.setAttribute("aria-pressed", "false");
       }
     }
 
-    modeBadgeEl.textContent = modeInfo.label;
-    modeCountEl.textContent = `${modeMarkedCount} / ${modeTotal}`;
-
-    // Contador global de los 75 números
     const totalOut = calledSet.size + (state.activeNumber !== null ? 1 : 0);
+    const remaining = TOTAL_NUMBERS - totalOut;
     calledCountEl.textContent = String(totalOut);
+    remainingCountEl.textContent = `${remaining} ${remaining === 1 ? "disponible" : "disponibles"}`;
 
-    // Número gigante en la mitad derecha
     if (state.activeNumber === null) {
       emptyStateEl.classList.remove("hidden");
       giantComboEl.classList.add("hidden");
@@ -334,7 +411,6 @@
       }
     }
 
-    // Últimos 6 números anteriores
     const previousOnes = state.history.slice(0, -1).reverse().slice(0, 6);
     recentListEl.innerHTML = "";
     if (previousOnes.length === 0) {
@@ -346,13 +422,15 @@
       for (const n of previousOnes) {
         const chip = document.createElement("span");
         chip.className = "recent-chip";
-        chip.textContent = `${getLetterForNumber(n)}-${n}`;
+        chip.textContent = `${getLetterForNumber(n)} - ${n}`;
         recentListEl.appendChild(chip);
       }
     }
 
     undoBtn.disabled = state.history.length === 0;
-    tombolaBtn.disabled = rollTimer !== null || getAvailableNumbersForCurrentMode().length === 0;
+    tombolaBtn.disabled = rollTimer !== null || remaining === 0;
+
+    renderPatternPreview(state.activePattern);
   }
 
   function clearFeedback() {
@@ -365,14 +443,6 @@
     }
   }
 
-  // Cambio de pestaña de letra
-  letterTabs.addEventListener("click", (e) => {
-    const tab = e.target.closest(".letter-tab");
-    if (!tab) return;
-    setMode(tab.dataset.mode);
-  });
-
-  // Resaltar botón disponible mientras se escribe
   numberInput.addEventListener("input", () => {
     clearFeedback();
     clearMatchHighlight();
@@ -389,7 +459,6 @@
     }
   });
 
-  // Enviar número por buscador
   numberForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const raw = numberInput.value.trim();
@@ -397,14 +466,6 @@
 
     if (!raw || !Number.isInteger(num) || num < 1 || num > TOTAL_NUMBERS) {
       inputFeedback.textContent = "Ingresa un número válido del 1 al 75.";
-      numberInput.focus();
-      return;
-    }
-
-    const modeInfo = MODES[state.mode];
-    if (state.mode !== "BINGO" && (num < modeInfo.min || num > modeInfo.max)) {
-      const targetLetter = getLetterForNumber(num);
-      inputFeedback.textContent = `El número ${num} pertenece a la letra ${targetLetter} (cambia a ${targetLetter} o BINGO).`;
       numberInput.focus();
       return;
     }
@@ -421,12 +482,20 @@
     numberInput.focus();
   });
 
+  patternSelector.addEventListener("click", (e) => {
+    const pill = e.target.closest(".pattern-pill");
+    if (!pill) return;
+    selectPattern(pill.dataset.pattern);
+  });
+
   tombolaBtn.addEventListener("click", spinTombola);
+  drawPatternBtn.addEventListener("click", drawRandomPattern);
   undoBtn.addEventListener("click", undoLast);
   resetBtn.addEventListener("click", resetBoard);
 
   // Inicialización
   loadState();
-  buildBoardForMode();
+  buildUnifiedBoard();
+  buildPatternGrid();
   render(false);
 })();
